@@ -439,18 +439,36 @@
 
     const STORAGE_KEY = "SSC_COHORT_RECORDS_PRITHVI";
 
-    function getStoredRecords() {
-      try {
-        const d = localStorage.getItem(STORAGE_KEY);
-        return d ? JSON.parse(d) : [];
-      } catch(e) { return []; }
-    }
+   // REPLACE YOUR FIREBASE URL HERE
+const FIREBASE_URL = "https://exam-a7c18-default-rtdb.firebaseio.com/attempts.json";
 
-    function saveRecordToStorage(record) {
-      const records = getStoredRecords();
-      records.unshift(record);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-    }
+// Read all student records from the central cloud database
+async function getStoredRecords() {
+  try {
+    const response = await fetch(FIREBASE_URL);
+    if (!response.ok) return [];
+    const data = await response.json();
+    if (!data) return [];
+    // Convert Firebase object map to an array of records
+    return Object.keys(data).map(key => data[key]).reverse();
+  } catch (e) {
+    console.error("Cloud fetch error:", e);
+    return [];
+  }
+}
+
+// Push student attempt directly to the central cloud database
+async function saveRecordToStorage(record) {
+  try {
+    await fetch(FIREBASE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(record)
+    });
+  } catch (e) {
+    console.error("Cloud save error:", e);
+  }
+}
 
     const startScreen = document.getElementById('start-screen');
     const quizScreen = document.getElementById('quiz-screen');
@@ -786,13 +804,13 @@
       alert("Logged out of Admin Portal.");
     });
 
-    function showAdminDashboard() {
+    async function showAdminDashboard() {
       startScreen.classList.add('hidden');
       quizScreen.classList.add('hidden');
       studentResultScreen.classList.add('hidden');
       adminDashboardScreen.classList.remove('hidden');
 
-      const records = getStoredRecords();
+      const records = await getStoredRecords();
       document.getElementById('adm-total-students').textContent = records.length;
 
       if (records.length > 0) {
