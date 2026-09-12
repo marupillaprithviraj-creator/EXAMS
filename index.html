@@ -212,6 +212,9 @@
           </div>
 
           <div class="flex items-center space-x-3">
+            <button id="admin-refresh-btn" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-700 transition">
+              🔄 Refresh
+            </button>
             <button id="admin-export-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl shadow border border-indigo-500 transition">
               📥 Export Cohort Data
             </button>
@@ -439,36 +442,49 @@
 
     const STORAGE_KEY = "SSC_COHORT_RECORDS_PRITHVI";
 
-   // REPLACE YOUR FIREBASE URL HERE
-const FIREBASE_URL = "https://exam-a7c18-default-rtdb.firebaseio.com/attempts.json";
+    // REPLACE YOUR FIREBASE URL HERE
+    const FIREBASE_URL = "https://exam-a7c18-default-rtdb.firebaseio.com/attempts.json";
 
-// Read all student records from the central cloud database
-async function getStoredRecords() {
-  try {
-    const response = await fetch(FIREBASE_URL);
-    if (!response.ok) return [];
-    const data = await response.json();
-    if (!data) return [];
-    // Convert Firebase object map to an array of records
-    return Object.keys(data).map(key => data[key]).reverse();
-  } catch (e) {
-    console.error("Cloud fetch error:", e);
-    return [];
-  }
-}
+    // Read all student records from the central cloud database
+    async function getStoredRecords() {
+      try {
+        const response = await fetch(FIREBASE_URL);
+        if (!response.ok) {
+          console.error("Cloud fetch rejected:", response.status, await response.text());
+          return [];
+        }
+        const data = await response.json();
+        if (!data) return [];
+        // Convert Firebase object map to an array of records
+        return Object.keys(data).map(key => data[key]).reverse();
+      } catch (e) {
+        console.error("Cloud fetch error:", e);
+        return [];
+      }
+    }
 
-// Push student attempt directly to the central cloud database
-async function saveRecordToStorage(record) {
-  try {
-    await fetch(FIREBASE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(record)
-    });
-  } catch (e) {
-    console.error("Cloud save error:", e);
-  }
-}
+    // Push student attempt directly to the central cloud database.
+    // Returns true only if Firebase actually accepted the write.
+    async function saveRecordToStorage(record) {
+      try {
+        const res = await fetch(FIREBASE_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(record)
+        });
+        if (!res.ok) {
+          // A 401/403 here almost always means the Realtime Database
+          // write rules are blocking the save. fetch() does NOT throw on
+          // these, so we must check res.ok explicitly.
+          console.error("Cloud save rejected:", res.status, await res.text());
+          return false;
+        }
+        return true;
+      } catch (e) {
+        console.error("Cloud save error:", e);
+        return false;
+      }
+    }
 
     const startScreen = document.getElementById('start-screen');
     const quizScreen = document.getElementById('quiz-screen');
@@ -650,7 +666,11 @@ async function saveRecordToStorage(record) {
         swot: generateSWOT(correct, wrong, unanswered, accuracy, avgSecPerAttempted, timeSpentPerQ)
       };
 
-     await saveRecordToStorage(candidateRecord);
+      // Upload to the central cloud DB and verify it was actually accepted.
+      const saved = await saveRecordToStorage(candidateRecord);
+      if (!saved) {
+        alert("⚠️ Your score could NOT be uploaded to the server (network or database-permission issue).\n\nPlease take a screenshot of your result screen and send it to your instructor. Your result is still shown below.");
+      }
 
       if (isAdminLoggedIn) {
         showAdminDashboard();
@@ -804,6 +824,12 @@ async function saveRecordToStorage(record) {
       alert("Logged out of Admin Portal.");
     });
 
+    // Manual refresh so the instructor can pull newly submitted attempts
+    // without reloading the whole page.
+    document.getElementById('admin-refresh-btn').addEventListener('click', () => {
+      if (isAdminLoggedIn) showAdminDashboard();
+    });
+
     async function showAdminDashboard() {
       startScreen.classList.add('hidden');
       quizScreen.classList.add('hidden');
@@ -823,6 +849,10 @@ async function saveRecordToStorage(record) {
         
         const avgSec = Math.round(totalTime / records.length);
         document.getElementById('adm-avg-time').textContent = `${Math.floor(avgSec/60)}m ${avgSec%60}s`;
+      } else {
+        document.getElementById('adm-avg-marks').textContent = "0.0";
+        document.getElementById('adm-avg-accuracy').textContent = "0%";
+        document.getElementById('adm-avg-time').textContent = "00:00";
       }
 
       const tbody = document.getElementById('admin-student-table-body');
@@ -941,8 +971,8 @@ async function saveRecordToStorage(record) {
       });
     }
 
-    document.getElementById('admin-export-btn').addEventListener('click', () => {
-      const records = getStoredRecords();
+    document.getElementById('admin-export-btn').addEventListener('click', async () => {
+      const records = await getStoredRecords();
       const blob = new Blob([JSON.stringify(records, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
