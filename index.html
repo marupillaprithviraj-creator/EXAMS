@@ -609,7 +609,7 @@ async function saveRecordToStorage(record) {
       if (confirm(`You have ${unanswered} unanswered questions. Submit now?`)) finishQuiz();
     });
 
-    function finishQuiz(timedOut = false) {
+    async function finishQuiz(timedOut = false) {
       clearInterval(timerInterval);
       headerTimerBox.classList.add('hidden');
       quizScreen.classList.add('hidden');
@@ -650,7 +650,7 @@ async function saveRecordToStorage(record) {
         swot: generateSWOT(correct, wrong, unanswered, accuracy, avgSecPerAttempted, timeSpentPerQ)
       };
 
-      saveRecordToStorage(candidateRecord);
+     await saveRecordToStorage(candidateRecord);
 
       if (isAdminLoggedIn) {
         showAdminDashboard();
